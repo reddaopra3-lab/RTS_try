@@ -74,32 +74,56 @@ def render_production_panel(game):
 def render_minimap(game):
     mm_x = WIDTH - MINIMAP_SIZE - MINIMAP_MARGIN
     mm_y = HEIGHT - MINIMAP_SIZE - MINIMAP_MARGIN
-    pygame.draw.rect(game.screen, (20, 24, 30), (mm_x, mm_y, MINIMAP_SIZE, MINIMAP_SIZE))
-    pygame.draw.rect(game.screen, (80, 90, 100), (mm_x, mm_y, MINIMAP_SIZE, MINIMAP_SIZE), 2)
+    minimap_rect = pygame.Rect(mm_x, mm_y, MINIMAP_SIZE, MINIMAP_SIZE)
+    pygame.draw.rect(game.screen, (20, 24, 30), minimap_rect)
+    game.screen.set_clip(minimap_rect)
 
-    scale_x = MINIMAP_SIZE / WIDTH
-    scale_y = MINIMAP_SIZE / HEIGHT
+    scale_x = MINIMAP_SIZE / game.map_width
+    scale_y = MINIMAP_SIZE / game.map_height
 
-    # 河流
-    for r in game.rivers:
-        pygame.draw.rect(game.screen, COLOR_RIVER,
-                         (mm_x + int(r.rect.x * scale_x), mm_y + int(r.rect.y * scale_y),
-                          max(2, int(r.rect.w * scale_x)), max(2, int(r.rect.h * scale_y))))
+    for mountain in game.mountains:
+        points = [
+            (mm_x + round(x * scale_x), mm_y + round(y * scale_y))
+            for x, y in mountain.points
+        ]
+        pygame.draw.polygon(game.screen, (100, 80, 60), points)
+    for river in game.rivers:
+        points = [
+            (mm_x + round(x * scale_x), mm_y + round(y * scale_y))
+            for x, y in river.points
+        ]
+        pygame.draw.polygon(game.screen, COLOR_RIVER, points)
+    for bridge in game.bridges:
+        points = [
+            (mm_x + round(x * scale_x), mm_y + round(y * scale_y))
+            for x, y in bridge.points
+        ]
+        pygame.draw.polygon(game.screen, (145, 110, 70), points)
 
     for node in game.resource_nodes:
-        px = mm_x + int(node.x * scale_x)
-        py = mm_y + int(node.y * scale_y)
+        px = mm_x + round(node.x * scale_x)
+        py = mm_y + round(node.y * scale_y)
         pygame.draw.circle(game.screen, COLOR_RESOURCE, (px, py), 2)
 
     for b in game.buildings:
-        px = mm_x + int(b.x * scale_x)
-        py = mm_y + int(b.y * scale_y)
+        px = mm_x + round(b.x * scale_x)
+        py = mm_y + round(b.y * scale_y)
         color = COLOR_PLAYER if b.team == "player" else COLOR_ENEMY
         size = 5 if b.b_type == "base" else 4
         pygame.draw.rect(game.screen, color, (px - size // 2, py - size // 2, size, size))
 
     for u in game.units:
-        px = mm_x + int(u.x * scale_x)
-        py = mm_y + int(u.y * scale_y)
+        px = mm_x + round(u.x * scale_x)
+        py = mm_y + round(u.y * scale_y)
         color = COLOR_PLAYER if u.team == "player" else COLOR_ENEMY
         pygame.draw.circle(game.screen, color, (px, py), 2)
+
+    viewport = pygame.Rect(
+        mm_x + round(game.camera_x * scale_x),
+        mm_y + round(game.camera_y * scale_y),
+        max(2, round(WIDTH * scale_x)),
+        max(2, round(HEIGHT * scale_y)),
+    )
+    pygame.draw.rect(game.screen, (235, 235, 235), viewport, 1)
+    game.screen.set_clip(None)
+    pygame.draw.rect(game.screen, (80, 90, 100), minimap_rect, 2)

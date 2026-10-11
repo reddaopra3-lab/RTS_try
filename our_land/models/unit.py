@@ -174,17 +174,19 @@ class Unit:
         else:
             self.state = "idle"
 
-    def draw(self, surface):
+    def draw(self, surface, offset=(0, 0)):
         color = COLOR_PLAYER if self.team == "player" else COLOR_ENEMY
+        screen_x = self.x - offset[0]
+        screen_y = self.y - offset[1]
         if self.unit_type == "worker":
-            draw_excavator(surface, self.x, self.y, self.facing, color, self.carry > 0)
+            draw_excavator(surface, screen_x, screen_y, self.facing, color, self.carry > 0)
         else:
-            draw_tank(surface, self.x, self.y, self.facing, self.turret, color)
+            draw_tank(surface, screen_x, screen_y, self.facing, self.turret, color)
 
         if self.selected:
-            pygame.draw.circle(surface, COLOR_SELECTION, (int(self.x), int(self.y)), self.radius + 6, 2)
+            pygame.draw.circle(surface, COLOR_SELECTION, (int(screen_x), int(screen_y)), self.radius + 6, 2)
 
         if self.hp < self.max_hp:
             bar_w = 24
-            pygame.draw.rect(surface, COLOR_HP_BG, (self.x - bar_w / 2, self.y - self.radius - 11, bar_w, 4))
-            pygame.draw.rect(surface, COLOR_HP, (self.x - bar_w / 2, self.y - self.radius - 11, bar_w * max(0, self.hp) / self.max_hp, 4))
+            pygame.draw.rect(surface, COLOR_HP_BG, (screen_x - bar_w / 2, screen_y - self.radius - 11, bar_w, 4))
+            pygame.draw.rect(surface, COLOR_HP, (screen_x - bar_w / 2, screen_y - self.radius - 11, bar_w * max(0, self.hp) / self.max_hp, 4))

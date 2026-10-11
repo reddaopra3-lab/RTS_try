@@ -2,8 +2,6 @@
 import heapq
 import math
 
-from ..config.settings import HEIGHT, WIDTH
-
 def segment_is_clear(game, x1, y1, x2, y2, radius):
     distance = math.hypot(x2 - x1, y2 - y1)
     steps = max(1, math.ceil(distance / 5))
@@ -18,9 +16,9 @@ def segment_is_clear(game, x1, y1, x2, y2, radius):
 
 
 def find_path(game, x1, y1, x2, y2, radius):
-    cell_size = 10
-    columns = math.ceil(WIDTH / cell_size)
-    rows = math.ceil(HEIGHT / cell_size)
+    cell_size = 20
+    columns = math.ceil(game.map_width / cell_size)
+    rows = math.ceil(game.map_height / cell_size)
     walkable = {}
 
     def point(cell):

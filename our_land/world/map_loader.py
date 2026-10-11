@@ -28,8 +28,15 @@ def validate_map(data: Any) -> Dict[str, Any]:
         raise ValueError("地图根节点必须是 JSON 对象")
     if type(data.get("version")) is not int or data["version"] != 1:
         raise ValueError("不支持的地图版本（当前仅支持 version 1）")
-    if data.get("width") != WIDTH or data.get("height") != HEIGHT:
-        raise ValueError(f"地图尺寸必须为 {WIDTH} × {HEIGHT}")
+    width = data.get("width")
+    height = data.get("height")
+    if (
+        isinstance(width, bool) or not isinstance(width, int)
+        or isinstance(height, bool) or not isinstance(height, int)
+        or not WIDTH <= width <= 20000
+        or not HEIGHT <= height <= 20000
+    ):
+        raise ValueError(f"地图尺寸必须在 {WIDTH}×{HEIGHT} 至 20000×20000 之间")
 
     terrain = data.get("terrain")
     if not isinstance(terrain, dict):
@@ -47,7 +54,7 @@ def validate_map(data: Any) -> Dict[str, Any]:
             raise ValueError(f"{label} 必须是对象")
         x = number(item.get("x"), f"{label}.x")
         y = number(item.get("y"), f"{label}.y")
-        if not 0 <= x < WIDTH or not 0 <= y < HEIGHT:
+        if not 0 <= x < width or not 0 <= y < height:
             raise ValueError(f"{label} 坐标超出地图边界")
         return x, y
 
@@ -57,13 +64,34 @@ def validate_map(data: Any) -> Dict[str, Any]:
             raise ValueError(f"terrain.{name} 必须是数组")
         for index, feature in enumerate(features):
             label = f"terrain.{name}[{index}]"
-            x, y = position(feature, label)
-            width = number(feature.get("w"), f"{label}.w")
-            height = number(feature.get("h"), f"{label}.h")
-            if width <= 0 or height <= 0:
-                raise ValueError(f"{label} 的宽度和高度必须大于 0")
-            if x + width > WIDTH or y + height > HEIGHT:
-                raise ValueError(f"{label} 超出地图边界")
+            if not isinstance(feature, dict):
+                raise ValueError(f"{label} 必须是对象")
+            if "points" in feature:
+                points = feature["points"]
+                if not isinstance(points, list) or len(points) < 3:
+                    raise ValueError(f"{label}.points 至少需要三个顶点")
+                for point_index, point in enumerate(points):
+                    if not isinstance(point, (list, tuple)) or len(point) != 2:
+                        raise ValueError(f"{label}.points[{point_index}] 必须是 [x, y]")
+                    px = number(point[0], f"{label}.points[{point_index}].x")
+                    py = number(point[1], f"{label}.points[{point_index}].y")
+                    if not 0 <= px <= width or not 0 <= py <= height:
+                        raise ValueError(f"{label}.points[{point_index}] 超出地图边界")
+                area = abs(sum(
+                    point[0] * points[(index + 1) % len(points)][1]
+                    - points[(index + 1) % len(points)][0] * point[1]
+                    for index, point in enumerate(points)
+                ))
+                if area == 0:
+                    raise ValueError(f"{label}.points 不能共线")
+            else:
+                x, y = position(feature, label)
+                feature_width = number(feature.get("w"), f"{label}.w")
+                feature_height = number(feature.get("h"), f"{label}.h")
+                if feature_width <= 0 or feature_height <= 0:
+                    raise ValueError(f"{label} 的宽度和高度必须大于 0")
+                if x + feature_width > width or y + feature_height > height:
+                    raise ValueError(f"{label} 超出地图边界")
 
     resources = data.get("resources")
     buildings = data.get("buildings")
@@ -128,12 +156,18 @@ def save_map(path, data: Dict[str, Any]) -> None:
 
 def apply_map(game, data: Dict[str, Any]) -> None:
     """Populate a game instance from previously validated map data."""
+    game.map_width = data["width"]
+    game.map_height = data["height"]
     for name in ("rivers", "bridges", "mountains", "resource_nodes", "buildings", "units"):
         getattr(game, name).clear()
 
     for name, model in _TERRAIN.items():
         for feature in data["terrain"][name]:
-            getattr(game, name).append(model(feature["x"], feature["y"], feature["w"], feature["h"]))
+            if "points" in feature:
+                terrain = model(points=feature["points"])
+            else:
+                terrain = model(feature["x"], feature["y"], feature["w"], feature["h"])
+            getattr(game, name).append(terrain)
     for resource in data["resources"]:
         game.resource_nodes.append(ResourceNode(resource["x"], resource["y"], resource["amount"]))
     for building in data["buildings"]:

@@ -33,6 +33,11 @@ class RTSGame:
         self.big_font = pygame.font.SysFont("microsoftyahei,simhei,arial", 32)
 
         self.resources = {"player": 400, "enemy": 350}
+        self.map_width = WIDTH
+        self.map_height = HEIGHT
+        self.camera_x = 0.0
+        self.camera_y = 0.0
+        self.camera_drag = None
         self.units = []
         self.buildings = []
         self.resource_nodes = []
@@ -75,6 +80,24 @@ class RTSGame:
         path = DEFAULT_MAP_PATH if map_path is None else map_path
         setup_map(self, path)
         self.current_map_path = path
+        player_base = next(
+            (b for b in self.buildings if b.team == "player" and b.b_type == "base"),
+            None,
+        )
+        if player_base:
+            self.center_camera(player_base.x, player_base.y)
+
+    def clamp_camera(self):
+        self.camera_x = max(0, min(self.camera_x, self.map_width - WIDTH))
+        self.camera_y = max(0, min(self.camera_y, self.map_height - HEIGHT))
+
+    def center_camera(self, world_x, world_y):
+        self.camera_x = world_x - WIDTH / 2
+        self.camera_y = world_y - HEIGHT / 2
+        self.clamp_camera()
+
+    def screen_to_world(self, screen_x, screen_y):
+        return screen_x + self.camera_x, screen_y + self.camera_y
 
     def start_selected_map(self):
         if not self.map_paths:
@@ -140,7 +163,10 @@ class RTSGame:
         return (x - nearest_x) ** 2 + (y - nearest_y) ** 2 < radius ** 2
 
     def is_blocked(self, x, y, radius):
-        if x - radius < 0 or y - radius < 0 or x + radius > WIDTH or y + radius > HEIGHT:
+        if (
+            x - radius < 0 or y - radius < 0
+            or x + radius > self.map_width or y + radius > self.map_height
+        ):
             return True
 
         # 建筑碰撞
@@ -149,24 +175,10 @@ class RTSGame:
             if abs(b.x - x) < half and abs(b.y - y) < half:
                 return True
 
-        # A unit can cross a river only while fully aligned with a bridge lane.
         for r in self.rivers:
-            if not self._circle_intersects_rect(x, y, radius, r.rect):
+            if not r.intersects_circle(x, y, radius):
                 continue
-            if r.rect.w <= r.rect.h:
-                on_bridge = any(
-                    bridge.rect.left <= r.rect.left - radius
-                    and bridge.rect.right >= r.rect.right + radius
-                    and bridge.rect.top + radius <= y <= bridge.rect.bottom - radius
-                    for bridge in self.bridges
-                )
-            else:
-                on_bridge = any(
-                    bridge.rect.top <= r.rect.top - radius
-                    and bridge.rect.bottom >= r.rect.bottom + radius
-                    and bridge.rect.left + radius <= x <= bridge.rect.right - radius
-                    for bridge in self.bridges
-                )
+            on_bridge = any(bridge.contains_circle(x, y, radius) for bridge in self.bridges)
             if not on_bridge:
                 return True
         return False
@@ -338,8 +350,35 @@ class RTSGame:
                         if self.build_mode:
                             self.show_msg("建造防御塔：左键放置（不能移动，性价比高于坦克）")
 
+                if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN):
+                    step = 48
+                    if event.key == pygame.K_LEFT:
+                        self.camera_x -= step
+                    elif event.key == pygame.K_RIGHT:
+                        self.camera_x += step
+                    elif event.key == pygame.K_UP:
+                        self.camera_y -= step
+                    else:
+                        self.camera_y += step
+                    self.clamp_camera()
+
                 if event.key == pygame.K_ESCAPE:
                     self.build_mode = None
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
+                self.camera_drag = (event.pos, self.camera_x, self.camera_y)
+                continue
+
+            if event.type == pygame.MOUSEMOTION and self.camera_drag:
+                start_pos, start_x, start_y = self.camera_drag
+                self.camera_x = start_x - (event.pos[0] - start_pos[0])
+                self.camera_y = start_y - (event.pos[1] - start_pos[1])
+                self.clamp_camera()
+                continue
+
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+                self.camera_drag = None
+                continue
 
             # 左键
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -351,21 +390,18 @@ class RTSGame:
                 if mm_x <= mx <= mm_x + MINIMAP_SIZE and mm_y <= my <= mm_y + MINIMAP_SIZE:
                     ratio_x = (mx - mm_x) / MINIMAP_SIZE
                     ratio_y = (my - mm_y) / MINIMAP_SIZE
-                    tx = ratio_x * WIDTH
-                    ty = ratio_y * HEIGHT
-                    for u in self.units:
-                        if u.selected:
-                            u.set_move(tx, ty, self)
+                    self.center_camera(ratio_x * self.map_width, ratio_y * self.map_height)
                     return True
 
                 if self.handle_production_click(mx, my):
                     continue
 
+                mx, my = self.screen_to_world(mx, my)
                 if self.build_mode:
                     cost = {"base": COST_BASE, "armor": COST_ARMOR, "tower": COST_TOWER}[self.build_mode]
                     if (
-                        60 < mx < WIDTH - 60
-                        and 60 < my < HEIGHT - 60
+                        60 < mx < self.map_width - 60
+                        and 60 < my < self.map_height - 60
                         and self.can_place_building(mx, my, self.build_mode)
                     ):
 
@@ -378,7 +414,7 @@ class RTSGame:
                         self.build_mode = None
                         self.show_msg("开始建造")
                         self.play_sound("click")
-                    elif 60 < mx < WIDTH - 60 and 60 < my < HEIGHT - 60:
+                    elif 60 < mx < self.map_width - 60 and 60 < my < self.map_height - 60:
                         self.show_msg("建筑位置被占用，请避开单位、建筑和河流")
                         self.play_sound("error")
                 else:
@@ -400,7 +436,7 @@ class RTSGame:
                             self.show_msg(f"{len(selected_workers)} 台挖掘机前往维修")
                         return True
 
-                    self.drag_start = event.pos
+                    self.drag_start = (mx, my)
                     for u in self.units:
                         if u.team == "player":
                             u.selected = False
@@ -415,7 +451,7 @@ class RTSGame:
 
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag_start and not self.build_mode:
                 x1, y1 = self.drag_start
-                x2, y2 = event.pos
+                x2, y2 = self.screen_to_world(*event.pos)
                 select_rect = pygame.Rect(min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1))
                 for u in self.units:
                     if u.team == "player":
@@ -429,7 +465,15 @@ class RTSGame:
 
             # 右键
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                mx, my = event.pos
+                mx, my = self.screen_to_world(*event.pos)
+                mm_x = WIDTH - MINIMAP_SIZE - MINIMAP_MARGIN
+                mm_y = HEIGHT - MINIMAP_SIZE - MINIMAP_MARGIN
+                if mm_x <= event.pos[0] <= mm_x + MINIMAP_SIZE and mm_y <= event.pos[1] <= mm_y + MINIMAP_SIZE:
+                    self.center_camera(
+                        (event.pos[0] - mm_x) / MINIMAP_SIZE * self.map_width,
+                        (event.pos[1] - mm_y) / MINIMAP_SIZE * self.map_height,
+                    )
+                    continue
                 selected = [u for u in self.units if u.selected]
 
                 # 优先：右键未完成建筑 → 继续建造
@@ -524,16 +568,16 @@ class RTSGame:
                 (base.x - 90, base.y - 100),
                 (base.x - 40, base.y - 120),
                 (base.x - 90, base.y + 110),
-                (720, 380),
-                (700, 250),
-                (700, 520),
+                (self.map_width * 0.62, self.map_height * 0.49),
+                (self.map_width * 0.58, self.map_height * 0.32),
+                (self.map_width * 0.58, self.map_height * 0.68),
             ]
         for x, y in candidates:
             if self.can_place_building(x, y, kind):
                 return x, y
         for _ in range(25):
-            x = random.randint(700, 1100)
-            y = random.randint(80, 700)
+            x = random.randint(max(80, int(self.map_width * 0.55)), max(81, self.map_width - 80))
+            y = random.randint(80, max(81, self.map_height - 80))
             if self.can_place_building(x, y, kind):
                 return x, y
         return None
@@ -681,24 +725,27 @@ class RTSGame:
 
         self.screen.fill(COLOR_BG)
 
+        camera = (self.camera_x, self.camera_y)
+
         # 先画地形
         for m in self.mountains:
-            m.draw(self.screen)
+            m.draw(self.screen, camera)
         for r in self.rivers:
-            r.draw(self.screen)
+            r.draw(self.screen, camera)
         for b in self.bridges:
-            b.draw(self.screen)
+            b.draw(self.screen, camera)
 
         for node in self.resource_nodes:
-            node.draw(self.screen)
+            node.draw(self.screen, camera)
         for b in self.buildings:
-            b.draw(self.screen)
+            b.draw(self.screen, camera)
         for u in self.units:
-            u.draw(self.screen)
+            u.draw(self.screen, camera)
 
         if self.drag_start and not self.build_mode:
             mx, my = pygame.mouse.get_pos()
-            x1, y1 = self.drag_start
+            x1 = self.drag_start[0] - self.camera_x
+            y1 = self.drag_start[1] - self.camera_y
             rect = pygame.Rect(min(x1, mx), min(y1, my), abs(mx - x1), abs(my - y1))
             pygame.draw.rect(self.screen, COLOR_SELECTION, rect, 1)
 

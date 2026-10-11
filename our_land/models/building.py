@@ -52,7 +52,9 @@ class Building:
     def fire(self, game):
         fire_tower(self, game)
 
-    def draw(self, surface):
+    def draw(self, surface, offset=(0, 0)):
+        screen_x = self.x - offset[0]
+        screen_y = self.y - offset[1]
         if self.b_type == "base":
             color = COLOR_PLAYER if self.team == "player" else COLOR_ENEMY
         elif self.b_type == "tower":
@@ -63,22 +65,22 @@ class Building:
             color = (color[0] // 2, color[1] // 2, color[2] // 2)
 
         if self.b_type == "base":
-            draw_hq(surface, self.x, self.y, self.size, color, self.finished)
+            draw_hq(surface, screen_x, screen_y, self.size, color, self.finished)
         elif self.b_type == "armor":
-            draw_armor_factory(surface, self.x, self.y, self.size, color, self.finished)
+            draw_armor_factory(surface, screen_x, screen_y, self.size, color, self.finished)
         else:
-            draw_tower(surface, self.x, self.y, self.size, color, self.aim, self.finished)
+            draw_tower(surface, screen_x, screen_y, self.size, color, self.aim, self.finished)
 
-        rect = pygame.Rect(self.x - self.size / 2, self.y - self.size / 2, self.size, self.size)
+        rect = pygame.Rect(screen_x - self.size / 2, screen_y - self.size / 2, self.size, self.size)
         if self.selected:
             pygame.draw.rect(surface, COLOR_SELECTION, rect.inflate(14, 14), 2)
 
         if not self.finished:
             bar_w = self.size
-            pygame.draw.rect(surface, (40, 40, 40), (self.x - bar_w / 2, self.y + self.size / 2 + 6, bar_w, 6))
-            pygame.draw.rect(surface, COLOR_PROGRESS, (self.x - bar_w / 2, self.y + self.size / 2 + 6, bar_w * self.build_progress / 100, 6))
+            pygame.draw.rect(surface, (40, 40, 40), (screen_x - bar_w / 2, screen_y + self.size / 2 + 6, bar_w, 6))
+            pygame.draw.rect(surface, COLOR_PROGRESS, (screen_x - bar_w / 2, screen_y + self.size / 2 + 6, bar_w * self.build_progress / 100, 6))
 
         if self.finished and self.hp < self.max_hp:
             bar_w = self.size
-            pygame.draw.rect(surface, COLOR_HP_BG, (self.x - bar_w / 2, self.y - self.size / 2 - 10, bar_w, 5))
-            pygame.draw.rect(surface, COLOR_HP, (self.x - bar_w / 2, self.y - self.size / 2 - 10, bar_w * max(0, self.hp) / self.max_hp, 5))
+            pygame.draw.rect(surface, COLOR_HP_BG, (screen_x - bar_w / 2, screen_y - self.size / 2 - 10, bar_w, 5))
+            pygame.draw.rect(surface, COLOR_HP, (screen_x - bar_w / 2, screen_y - self.size / 2 - 10, bar_w * max(0, self.hp) / self.max_hp, 5))
